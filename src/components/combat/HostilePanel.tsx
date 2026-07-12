@@ -26,11 +26,6 @@ export default function HostilePanel({ bossHpPct, bossHpCurrent, maxBossHp }: Ho
           <div className="bar-label"><span>Shield</span><b>1,200 / 1,200</b></div>
           <div className="bar-track"><div className="bar-fill shield" style={{ width: '100%' }} /></div>
         </div>
-        <div className="armor-row">
-          <div className="bar-label"><span>Fortitude</span><b>35%</b></div>
-          <div className="armor-track"><div className="armor-fill"></div></div>
-        </div>
-
         <div className="fx-row hostile-fx">
           <div className="fx-chip"><div className="fx-circle">⊘</div></div>
           <div className="fx-chip"><div className="fx-circle">☠</div></div>
