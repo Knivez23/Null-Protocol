@@ -1,13 +1,23 @@
-import type { CombatantStats } from '../types';
-import { computeAttackInterval, resolveAttack, computeRegenPerRound, type AttackOutcome } from '../config/combatFormulas';
+import type { CombatantStats, ResistanceType } from '../types';
+import {
+  computeAttackInterval, resolveMeleeAttack, resolveRangedAttack, resolveElementalAttack,
+  computeRegenHeal, REGEN_TICK_SECONDS,
+  type AttackOutcome, type ElementalAttackOutcome,
+} from '../config/combatFormulas';
 
 /**
- * ATB combat engine — Combat System Design Revision 5. Fully replaces the
- * old sequential/TRACE-initiative engine (which this file used to contain):
- * no more pre-combat initiative roll, no more discrete "rounds" with a
- * fixed turn order. Each unit has its own continuously-filling action gauge
- * driven by its own Speed; units act independently whenever their gauge is
- * full, regardless of what the other unit is doing.
+ * ATB combat engine — Combat and Systems Design v2.0. The gauge/session
+ * mechanics themselves are unchanged from Revision 5 (independent
+ * continuously-filling action gauges, no discrete rounds, no pre-combat
+ * initiative roll) — what changed is what happens INSIDE a resolved
+ * action, and how Regen is timed.
+ *
+ * Regen timing changed materially from Revision 5: it no longer fires on
+ * each unit's own action ("per round" reinterpreted as "per actor turn").
+ * The design doc locks it to a genuine fixed 8-second global clock,
+ * player-only — monsters carry regenRating=0 and never heal this way
+ * (they can only sustain through Ability effects later, which cost their
+ * action — not modeled here, no Ability system exists yet).
  */
 
 export interface CombatUnit {
@@ -17,15 +27,13 @@ export interface CombatUnit {
   stats: CombatantStats;
   currentHp: number;
   gaugeProgress: number; // seconds accumulated toward this unit's own AttackInterval
+  attackType: 'melee' | 'ranged'; // determines which hit-chance/reduction formula this unit's attacks use
+  element?: ResistanceType; // if set, this unit's attacks resolve via the elemental 70/30 split instead of a pure physical attack
 }
 
-export interface CombatEvent {
-  type: 'attack';
-  attackerId: string;
-  defenderId: string;
-  outcome: AttackOutcome;
-  timestamp: number; // seconds since combat start
-}
+export type CombatEvent =
+  | { type: 'attack'; attackerId: string; defenderId: string; outcome: AttackOutcome | ElementalAttackOutcome; timestamp: number }
+  | { type: 'regen'; unitId: string; healAmount: number; hpAfter: number; timestamp: number };
 
 export interface CombatSession {
   units: CombatUnit[];
@@ -33,14 +41,18 @@ export interface CombatSession {
   events: CombatEvent[];
   isOver: boolean;
   winnerIsPlayer: boolean | null; // null = not over, or a draw (shouldn't normally happen)
+  regenTimer: number; // seconds accumulated toward the next fixed 8s regen tick
 }
 
-export function createUnit(id: string, name: string, isPlayer: boolean, stats: CombatantStats): CombatUnit {
-  return { id, name, isPlayer, stats, currentHp: stats.hp, gaugeProgress: 0 };
+export function createUnit(
+  id: string, name: string, isPlayer: boolean, stats: CombatantStats,
+  attackType: 'melee' | 'ranged' = 'melee', element?: ResistanceType,
+): CombatUnit {
+  return { id, name, isPlayer, stats, currentHp: stats.maxHp, gaugeProgress: 0, attackType, element };
 }
 
 export function createSession(units: CombatUnit[]): CombatSession {
-  return { units, elapsedTime: 0, events: [], isOver: false, winnerIsPlayer: null };
+  return { units, elapsedTime: 0, events: [], isOver: false, winnerIsPlayer: null, regenTimer: 0 };
 }
 
 function pickTarget(units: CombatUnit[], attacker: CombatUnit): CombatUnit | null {
@@ -56,18 +68,26 @@ function checkVictory(units: CombatUnit[]): boolean | null {
   return null; // still ongoing (or, in a degenerate case, both wiped simultaneously)
 }
 
+/** Dispatches to the right resolver based on the attacker's attack type and whether they carry an element. */
+function resolveUnitAttack(attacker: CombatUnit, defender: CombatUnit, rng: () => number): AttackOutcome | ElementalAttackOutcome {
+  if (attacker.element) {
+    return resolveElementalAttack(attacker.stats, defender.stats, defender.currentHp, attacker.element, attacker.attackType === 'ranged', rng);
+  }
+  return attacker.attackType === 'ranged'
+    ? resolveRangedAttack(attacker.stats, defender.stats, defender.currentHp, rng)
+    : resolveMeleeAttack(attacker.stats, defender.stats, defender.currentHp, rng);
+}
+
 /**
- * Advances the session by deltaSeconds. Any unit whose gauge fills during
- * this tick acts (once — if deltaSeconds is large enough to fill a gauge
- * more than once, only the first action fires this tick; the leftover
- * progress carries over rather than being lost, so fast attackers don't
- * lose value to a coarse tick rate).
+ * Advances the session by deltaSeconds.
  *
- * Regen (§13) fires on EACH unit's own action, not on a fixed global
- * "round" — ATB has no discrete rounds anymore, so "per round" is
- * interpreted as "per that unit's own action cycle." This is an
- * interpretation, not an explicit part of the locked formula — the design
- * doc itself flags Regen's ATB behavior as still being worked out.
+ * Action gauges: any unit whose gauge fills during this tick acts once —
+ * leftover progress carries over rather than being lost, so fast attackers
+ * don't lose value to a coarse tick rate.
+ *
+ * Regen: a single SESSION-WIDE timer (not per-unit) accumulates toward the
+ * fixed 8-second tick. When it fires, every living PLAYER unit heals —
+ * monsters are skipped entirely, matching the design doc.
  */
 export function advanceSession(session: CombatSession, deltaSeconds: number, rng: () => number = Math.random): CombatSession {
   if (session.isOver) return session;
@@ -75,7 +95,9 @@ export function advanceSession(session: CombatSession, deltaSeconds: number, rng
   const units = session.units.map(u => ({ ...u }));
   const events: CombatEvent[] = [...session.events];
   const elapsedTime = session.elapsedTime + deltaSeconds;
+  let regenTimer = session.regenTimer + deltaSeconds;
 
+  // Action gauges
   for (const unit of units) {
     if (unit.currentHp <= 0) continue;
     unit.gaugeProgress += deltaSeconds;
@@ -85,26 +107,34 @@ export function advanceSession(session: CombatSession, deltaSeconds: number, rng
 
     unit.gaugeProgress -= interval; // carry over leftover progress, don't discard it
 
-    const target = pickTarget(units, unit);
+    const target = units.find(u => u.isPlayer !== unit.isPlayer && u.currentHp > 0);
     if (!target) continue;
 
-    const outcome = resolveAttack(unit.stats, target.stats, target.currentHp, rng);
+    const outcome = resolveUnitAttack(unit, target, rng);
     target.currentHp = outcome.defenderHpAfter;
     events.push({ type: 'attack', attackerId: unit.id, defenderId: target.id, outcome, timestamp: elapsedTime });
 
-    // Regen fires on the actor's own turn, per the interpretation above.
-    if (unit.currentHp > 0 && unit.stats.regen > 0) {
-      const heal = computeRegenPerRound(unit.stats.hp, unit.stats.regen);
-      unit.currentHp = Math.min(unit.stats.hp, unit.currentHp + heal);
-    }
-
     if (target.currentHp <= 0) break; // no point resolving further actions this tick against a dead session
+  }
+
+  // Regen — fixed 8s global tick, player-only. Runs independently of the
+  // action-gauge loop above; a unit can regen on a tick where they didn't act.
+  while (regenTimer >= REGEN_TICK_SECONDS) {
+    regenTimer -= REGEN_TICK_SECONDS;
+    for (const unit of units) {
+      if (!unit.isPlayer || unit.currentHp <= 0 || unit.stats.regenRating <= 0) continue;
+      const heal = computeRegenHeal(unit.stats.maxHp, unit.stats.regenRating);
+      if (heal <= 0) continue;
+      const hpAfter = Math.min(unit.stats.maxHp, unit.currentHp + heal);
+      unit.currentHp = hpAfter;
+      events.push({ type: 'regen', unitId: unit.id, healAmount: heal, hpAfter, timestamp: elapsedTime });
+    }
   }
 
   const winner = checkVictory(units);
   const isOver = winner !== null;
 
-  return { units, elapsedTime, events, isOver, winnerIsPlayer: winner };
+  return { units, elapsedTime, events, isOver, winnerIsPlayer: winner, regenTimer };
 }
 
 /** Runs a full session to completion using fixed time steps — for headless simulation/testing, not real-time UI use. */

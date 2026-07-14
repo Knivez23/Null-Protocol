@@ -1,5 +1,5 @@
 import type { GearItem, ItemStat, Schematic, ElementalEffect, WeaponElement } from '../types';
-import { RARITY_META, RARITY_IDS } from '../data/rarity';
+import { RARITY_META, RARITY_IDS, hasVariableStatCount } from '../data/rarity';
 import { GEAR_TYPES } from '../data/gearTypes';
 import { STAT_DEFS, RESISTANCE_TYPES, getResistanceStatDef, type StatDef, type ResistanceType } from '../data/itemStats';
 import { ITEM_PREFIXES, MANUFACTURERS, ELEMENT_NAME_PREFIXES } from '../data/itemNames';
@@ -16,14 +16,10 @@ const MANUFACTURER_NAME_RARITIES = new Set(['legendary', 'mythic']);
 
 export function generateItemName(rarityId: string, gearTypeLabel: string, rng: () => number = Math.random, element?: WeaponElement): string {
   if (MANUFACTURER_NAME_RARITIES.has(rarityId)) {
-    // Manufacturer naming already conveys "special" on its own — not
-    // layering element flavor on top of it for v1, keeps naming simple.
     const manufacturer = MANUFACTURERS[Math.floor(rng() * MANUFACTURERS.length)];
     return `${manufacturer.name} ${gearTypeLabel}`;
   }
   if (element) {
-    // "Searing Rifle," not "Rifle of Heat" — element flavor words replace
-    // the generic prefix pool entirely when a weapon actually rolled one.
     const flavorPool = ELEMENT_NAME_PREFIXES[element];
     const prefix = flavorPool[Math.floor(rng() * flavorPool.length)];
     return `${prefix} ${gearTypeLabel}`;
@@ -33,18 +29,21 @@ export function generateItemName(rarityId: string, gearTypeLabel: string, rng: (
   return `${prefix}-${suffix} ${gearTypeLabel}`;
 }
 
-export function rollPowerLevel(rarityId: string, rng: () => number = Math.random): number {
-  const meta = RARITY_META[rarityId as keyof typeof RARITY_META];
-  return meta.plMin + Math.floor(rng() * (meta.plMax - meta.plMin + 1));
-}
+// ─────────────────────────────────────────────────────────────
+// Stat rolling — §16/§19. Values roll DIRECTLY from each stat's own
+// per-rarity range now, no coefficient/PL-scaling involved at all.
+// ─────────────────────────────────────────────────────────────
 
-/** A "slot" here is either a regular stat id or a resistance-slot marker — treated uniformly when randomly selecting which stats an item gets. */
-type StatSlot = { kind: 'regular'; statId: string } | { kind: 'resistance' };
+type StatSlot =
+  | { kind: 'regular'; statId: string }
+  | { kind: 'resistance' }
+  | { kind: 'exclusiveAccuracy' }; // resolves to EITHER meleeAccuracy or rangedAccuracy, 50/50 — Weapon only
 
 function buildSlotPool(gearTypeId: string): StatSlot[] {
   const typeMeta = GEAR_TYPES[gearTypeId];
   const slots: StatSlot[] = typeMeta.statPool.map(statId => ({ kind: 'regular', statId }));
-  for (let i = 0; i < typeMeta.resistanceSlots; i++) slots.push({ kind: 'resistance' });
+  if (typeMeta.hasResistanceSlot) slots.push({ kind: 'resistance' });
+  if (typeMeta.hasExclusiveAccuracyChoice) slots.push({ kind: 'exclusiveAccuracy' });
   return slots;
 }
 
@@ -57,67 +56,89 @@ function shuffle<T>(arr: T[], rng: () => number): T[] {
   return copy;
 }
 
-/**
- * Rolls a stat's final value. Multiplicative by construction
- * (coefficient * PL * randomFactor, all strictly positive terms) — this
- * cannot go negative, no clamping-below-zero logic needed. Small hard
- * floor still applied as a belt-and-suspenders safety net.
- */
-function rollStatValue(statDef: StatDef, powerLevel: number, rng: () => number): number {
-  const randomFactor = 0.85 + rng() * 0.30; // 0.85 - 1.15
-  const raw = statDef.coefficient * powerLevel * randomFactor;
-  const floor = statDef.isPercentage ? 0.1 : 1;
-  const value = Math.max(floor, raw);
-  return Math.round(value * 10) / 10; // 1 decimal place — holds both flat numbers and percentages cleanly
+interface RolledStat {
+  stat: ItemStat;
+  rollQuality: number; // (value - rangeMin) / (rangeMax - rangeMin), 0 = worst possible roll, 1 = best
 }
 
-export function rollItemStats(gearTypeId: string, rarityId: string, powerLevel: number, rng: () => number = Math.random): ItemStat[] {
-  const rarityMeta = RARITY_META[rarityId as keyof typeof RARITY_META];
+function rollStatFromDef(def: StatDef, rarityId: keyof typeof RARITY_META, rng: () => number): RolledStat {
+  const range = def.ranges[rarityId];
+  const value = Math.round((range.min + rng() * (range.max - range.min)) * 10) / 10;
+  const span = range.max - range.min;
+  const rollQuality = span <= 0 ? 1 : (value - range.min) / span; // span=0 (single-value range) can't be improved on — treat as a perfect roll
+  return { stat: { name: def.label, value, isPercentage: def.isPercentage }, rollQuality };
+}
+
+/** Rolls every stat an item gets, WITH each one's roll quality attached — used both to build the displayed stats and to compute Power Level (§20). */
+function rollItemStatsWithQuality(gearTypeId: string, rarityId: keyof typeof RARITY_META, rng: () => number): RolledStat[] {
+  const rarityMeta = RARITY_META[rarityId];
   const slotPool = buildSlotPool(gearTypeId);
 
-  const statCount = rarityMeta.statCountMax === null
-    ? slotPool.length // legendary/mythic — all stats in the pool
-    : rarityMeta.statCountMin + Math.floor(rng() * (rarityMeta.statCountMax - rarityMeta.statCountMin + 1));
-
+  const statCount = rarityMeta.statCountMin + Math.floor(rng() * (rarityMeta.statCountMax - rarityMeta.statCountMin + 1));
   const chosenSlots = shuffle(slotPool, rng).slice(0, Math.min(statCount, slotPool.length));
 
-  // Resistance slots resolve to random DISTINCT resistance types — no duplicates within one item.
   const availableResistances = shuffle([...RESISTANCE_TYPES], rng) as ResistanceType[];
   let resistanceIndex = 0;
 
-  const stats: ItemStat[] = [];
+  const rolled: RolledStat[] = [];
   for (const slot of chosenSlots) {
     if (slot.kind === 'regular') {
-      const def = STAT_DEFS[slot.statId];
-      stats.push({ name: def.label, value: rollStatValue(def, powerLevel, rng) });
-    } else {
+      rolled.push(rollStatFromDef(STAT_DEFS[slot.statId], rarityId, rng));
+    } else if (slot.kind === 'resistance') {
       const resistanceType = availableResistances[resistanceIndex++];
-      const def = getResistanceStatDef(resistanceType);
-      stats.push({ name: def.label, value: rollStatValue(def, powerLevel, rng) });
+      rolled.push(rollStatFromDef(getResistanceStatDef(resistanceType), rarityId, rng));
+    } else {
+      // exclusiveAccuracy — 50/50 melee or ranged, never both
+      const statId = rng() < 0.5 ? 'meleeAccuracy' : 'rangedAccuracy';
+      rolled.push(rollStatFromDef(STAT_DEFS[statId], rarityId, rng));
     }
   }
-  return stats;
+  return rolled;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Power Level — §20. Computed FROM the rolled stats, not the reverse.
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * PowerLevel = round(RarityPLMin + FinalQuality x (RarityPLMax - RarityPLMin))
+ * FinalQuality = (AverageRollQuality x 0.75) + (StatCountQuality x 0.25) — only when the rarity has a variable stat count.
+ * FinalQuality = AverageRollQuality — otherwise (Uncommon/Epic/Mythic, fixed counts, §18).
+ */
+export function computePowerLevel(rolledStats: RolledStat[], rarityId: keyof typeof RARITY_META, actualStatCount: number): number {
+  const rarityMeta = RARITY_META[rarityId];
+  const averageRollQuality = rolledStats.reduce((sum, r) => sum + r.rollQuality, 0) / rolledStats.length;
+
+  let finalQuality: number;
+  if (hasVariableStatCount(rarityId)) {
+    const statCountQuality = (actualStatCount - rarityMeta.statCountMin) / (rarityMeta.statCountMax - rarityMeta.statCountMin);
+    finalQuality = averageRollQuality * 0.75 + statCountQuality * 0.25;
+  } else {
+    finalQuality = averageRollQuality;
+  }
+
+  return Math.round(rarityMeta.plMin + finalQuality * (rarityMeta.plMax - rarityMeta.plMin));
 }
 
 /** Placeholder sell-value formula — no real economy/balance pass has happened yet, same as everywhere else this has come up. */
 function rollMarketPrice(powerLevel: number): number {
-  return Math.round(powerLevel * 2.5);
+  return Math.round(powerLevel * 0.5);
 }
 
-const WEAPON_ELEMENTS: WeaponElement[] = ['fire', 'cold', 'lightning'];
+// ─────────────────────────────────────────────────────────────
+// Elemental weapon roll — §15. Expanded to all 6 elements (was 3), matching
+// all 6 Resistance types 1:1. Roll chance formula unchanged from before.
+// ─────────────────────────────────────────────────────────────
 
-/** 3% base, +5% per rarity step (Common=0 -> Mythic=5), per locked design: Common 3% ... Mythic 28%. */
+const WEAPON_ELEMENTS: WeaponElement[] = ['fire', 'cold', 'lightning', 'bleed', 'poison', 'rot'];
+
+/** 3% base, +5% per rarity step (Common=0 -> Mythic=5): Common 3% ... Mythic 28%. */
 export function getElementalRollChance(rarityId: string): number {
   const index = RARITY_IDS.indexOf(rarityId as (typeof RARITY_IDS)[number]);
   return 0.03 + 0.05 * Math.max(0, index);
 }
 
-/**
- * Rolls whether a WEAPON gets an elemental effect — independent of, and on
- * top of, its normal stat roll (doesn't consume a stat slot). Only weapons
- * can roll one; everything else always returns undefined. What the element
- * actually DOES in combat is intentionally left blank — see ElementalEffect.
- */
+/** Rolls whether a WEAPON gets an elemental effect — independent of, and on top of, its normal stat roll. Only weapons can roll one. What the element actually DOES in combat beyond the damage-split math (combatFormulas.ts resolveElementalAttack) is still undesigned. */
 export function rollElementalEffect(gearTypeId: string, rarityId: string, rng: () => number = Math.random): ElementalEffect | undefined {
   const typeMeta = GEAR_TYPES[gearTypeId];
   if (typeMeta.category !== 'weapon') return undefined;
@@ -126,19 +147,23 @@ export function rollElementalEffect(gearTypeId: string, rarityId: string, rng: (
   if (rng() >= chance) return undefined;
 
   const element = WEAPON_ELEMENTS[Math.floor(rng() * WEAPON_ELEMENTS.length)];
-  return { element }; // bonusDamage/statusEffectId/statusChance/statusDuration deliberately left undefined
+  return { element };
 }
 
 /**
- * The actual craft-time generator. Per the locked design: items are
- * generated randomly WHEN Craft is clicked, not before — the Schematic
- * only determines type and rarity, everything else (name, PL, stats) rolls
- * fresh here.
+ * The actual craft-time generator. Items are generated randomly WHEN Craft
+ * is clicked, not before — the Schematic only determines type and rarity,
+ * everything else (name, stats, Power Level) rolls fresh here. Power Level
+ * is computed AFTER stats roll, never the other way around.
  */
 export function craftItem(schematic: Schematic, rng: () => number = Math.random): GearItem {
   const typeMeta = GEAR_TYPES[schematic.type];
-  const powerLevel = rollPowerLevel(schematic.rarity, rng);
-  const stats = rollItemStats(schematic.type, schematic.rarity, powerLevel, rng);
+  const rarityId = schematic.rarity as keyof typeof RARITY_META;
+
+  const rolledStats = rollItemStatsWithQuality(schematic.type, rarityId, rng);
+  const powerLevel = computePowerLevel(rolledStats, rarityId, rolledStats.length);
+  const stats: ItemStat[] = rolledStats.map(r => r.stat);
+
   const elementalEffect = rollElementalEffect(schematic.type, schematic.rarity, rng);
   const name = generateItemName(schematic.rarity, typeMeta.label, rng, elementalEffect?.element);
 

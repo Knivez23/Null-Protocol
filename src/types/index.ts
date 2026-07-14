@@ -34,35 +34,57 @@ export interface ComponentMeta {
 export type ResistanceType = 'heat' | 'cold' | 'shock' | 'poison' | 'bleed' | 'rot';
 
 /**
- * The 10 Main Stats — Combat System Design Revision 5 (locked).
- * IMPORTANT — unit conventions, easy to get silently wrong:
- *  - accuracy / dodgeChance: RAW totals summed from gear (e.g. 118), NOT a
- *    0-1 fraction and NOT usable directly in the hit formula. Must pass
- *    through effectiveValue() first (config/combatFormulas.ts) before use.
- *  - critChance: a PLAIN PERCENTAGE NUMBER (e.g. 3.5 means 3.5%), flat
- *    additive from gear, NO curve. Roll: rng()*100 < critChance.
- *  - armor: a PLAIN PERCENTAGE NUMBER (e.g. 35 means 35% physical damage
- *    reduction), clamped at 75. No raw-to-% curve specified in the design
- *    doc beyond the cap — treated as directly usable. Flagged as an
- *    implementation judgment call, not an explicitly locked conversion.
- *  - resistances: 0-1 fraction (e.g. 0.10 = 10%), UNCHANGED from before —
- *    this is the one stat whose stored format didn't change in the redesign.
- *  - defense, attackPower, speed, regen: flat raw numbers, feed their own
- *    named formulas (Sections 6/5/12/13 of the design doc).
+ * The full stat set — Combat and Systems Design v2.0 (Attributes removed).
+ * Fully supersedes Revision 5's CombatantStats — nearly every field changed
+ * name, shape, or unit convention. Key conventions, easy to get wrong:
+ *
+ *  - meleeAccuracy / rangedAccuracy / dodgeRating / evasionRating /
+ *    armorRating / armorPierce / resistancePierce / statusPower /
+ *    regenRating: all RAW RATINGS. None of these are usable directly in
+ *    combat math — every one must pass through effectiveValue() first
+ *    (config/combatFormulas.ts). This is a bigger set of curve-gated stats
+ *    than before — Armor and Resistance were flat/direct-percentage in the
+ *    old system and are ratings now, and Melee/Ranged Accuracy plus
+ *    Dodge/Evasion are four separate stats replacing the old single
+ *    Accuracy/Dodge pair.
+ *  - critChance / statusChance: plain percentage numbers, flat additive,
+ *    NO curve — unchanged in spirit from before.
+ *  - critDamage: a plain PERCENTAGE NUMBER (e.g. 150 means 150%), NOT a
+ *    pre-multiplied decimal like the old critDamageMultiplier (1.5) was.
+ *    The actual multiplier only gets derived at resolution time, after the
+ *    soft/hard cap formula runs (Section 11) — never multiply with this
+ *    field directly.
+ *  - resistances: now RAW RATINGS per type, NOT 0-1 fractions. This is a
+ *    real storage change from before — resistances now go through the same
+ *    curve as everything else rather than being pre-computed percentages.
+ *  - maxHp: the FINAL, ready-to-use value — already includes the
+ *    PowerLevel-derived base plus gear bonus (player) or the map-PL/role
+ *    scaling (monster). Computed via computePlayerMaxHp()/
+ *    computeMonsterMaxHp() when constructing this object, not derived
+ *    on-the-fly from other fields here.
+ *  - attackPower, defensePower, speed: flat raw numbers, unchanged in
+ *    spirit, feed their own named formulas.
  */
 export interface CombatantStats {
-  hp: number;
-  accuracy: number;                // RAW total — see note above, needs effectiveValue()
+  maxHp: number;
   attackPower: number;
-  defense: number;
-  armor: number;                   // percentage number, 0-75 — NEW stat, Revision 5
-  critChance: number;              // percentage number, e.g. 3.5 = 3.5%, flat additive, 0-75 cap
-  critDamageMultiplier: number;    // e.g. 1.5 = 150%
-  dodgeChance: number;             // RAW total — see note above, needs effectiveValue()
+  meleeAccuracy: number;    // RAW rating
+  rangedAccuracy: number;   // RAW rating
+  defensePower: number;
+  armorRating: number;      // RAW rating — NOTE: was a direct percentage (`armor`) before this revision
+  critChance: number;       // percentage number, flat additive, 0-75 cap
+  critDamage: number;       // percentage number (e.g. 150 = 150%), soft cap 250%, hard cap 400% — NOT pre-multiplied
+  dodgeRating: number;      // RAW rating — was `dodgeChance` before this revision
+  evasionRating: number;    // RAW rating — NEW, ranged-attack counterpart to Dodge
   speed: number;
-  regen: number;                   // now used mid-combat per-round too (testing placeholder — Revision 5 §13)
-  resistances: Record<ResistanceType, number>; // 0-1 chance, UNCHANGED format
+  regenRating: number;      // RAW rating — was `regen` before this revision; player-only mechanically (monsters carry 0)
+  armorPierce: number;      // RAW rating — NEW
+  resistancePierce: number; // RAW rating — NEW
+  statusPower: number;      // RAW rating — NEW, potency for a status-effect system that doesn't exist yet (scaffolding only)
+  statusChance: number;     // percentage number, flat — NEW, same scaffolding caveat as statusPower
+  resistances: Record<ResistanceType, number>; // RAW ratings per type — CHANGED from 0-1 fractions before this revision
 }
+
 
 // NOTE: the old Combatant/AttackResult/RoundResult/EncounterResult types that
 // used to live here (sequential-round combat model) were removed — fully
@@ -93,7 +115,7 @@ export interface MapListing {
 /** Reserved for the Map Rarity open idea (color-coded tiers) — not yet implemented. */
 export type MapRarity = 'common' | 'uncommon' | 'rare' | 'legendary' | 'mythic' | 'unique';
 
-export type GearSlotType = 'head' | 'chest' | 'legs' | 'hands' | 'feet' | 'weapon' | 'offhand' | 'ring' | 'amulet';
+export type GearSlotType = 'head' | 'chest' | 'legs' | 'hands' | 'feet' | 'weapon' | 'offhand' | 'ring' | 'amulet' | 'cyberdeck';
 
 /**
  * Rarity is the SOLE power/quality axis — "Tier" was fully dropped per
@@ -102,10 +124,11 @@ export type GearSlotType = 'head' | 'chest' | 'legs' | 'hands' | 'feet' | 'weapo
  */
 export type RarityId = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary' | 'mythic';
 
-/** A single rolled stat bonus on a crafted item. Value is a float — holds both flat numbers and percentages. */
+/** A single rolled stat bonus on a crafted item. Value is a float — holds both flat numbers and percentages. isPercentage drives display (Section 5's Rating-vs-Percentage split) — set at roll time from the stat's own definition, not re-derived by name-matching in the UI. */
 export interface ItemStat {
   name: string;
   value: number;
+  isPercentage: boolean;
 }
 
 /** One crafting-component requirement on a Schematic. */
@@ -145,7 +168,7 @@ export interface Schematic {
  * 'physical' isn't itself rollable — it's just the implicit default when no
  * element rolls (elementalEffect is undefined).
  */
-export type WeaponElement = 'fire' | 'cold' | 'lightning';
+export type WeaponElement = 'fire' | 'cold' | 'lightning' | 'bleed' | 'poison' | 'rot';
 
 /**
  * What an elemental roll actually DOES in combat is intentionally
@@ -170,8 +193,8 @@ export interface GearItem {
   rarity: RarityId;
   artAsset: string;       // snapshotted from the Schematic at craft time — stays frozen even if that Type's default art changes later
   name: string;
-  powerLevel: number;      // rolled within the rarity's PL range
-  stats: ItemStat[];        // 1-6 entries depending on rarity — see data/gearTypes.ts stat pools
+  powerLevel: number;      // computed from roll quality within the rarity's PL range (Combat and Systems Design v2.0 §20) — NOT independently rolled
+  stats: ItemStat[];        // entries depend on rarity — see data/gearTypes.ts stat pools
   marketPrice: number;       // SELL value only
   elementalEffect?: ElementalEffect; // weapons only — see ElementalEffect above
 }

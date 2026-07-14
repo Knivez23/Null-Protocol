@@ -11,10 +11,13 @@ export const ITEM_PREFIXES: string[] = [
  * "Rifle of Heat." Physical (no element rolled) uses the standard
  * ITEM_PREFIXES pool as normal, nothing changes for it.
  */
-export const ELEMENT_NAME_PREFIXES: Record<'fire' | 'cold' | 'lightning', string[]> = {
+export const ELEMENT_NAME_PREFIXES: Record<'fire' | 'cold' | 'lightning' | 'bleed' | 'poison' | 'rot', string[]> = {
   fire: ['Searing', 'Scorched', 'Ember', 'Blazing'],
   cold: ['Frost', 'Glacial', 'Rimed', 'Frozen'],
   lightning: ['Voltaic', 'Arcing', 'Storm', 'Fulgent'],
+  bleed: ['Rending', 'Serrated', 'Gashing', 'Ripping'],
+  poison: ['Venomous', 'Toxic', 'Noxious', 'Caustic'],
+  rot: ['Decaying', 'Corroded', 'Blighted', 'Festering'],
 };
 
 export interface ManufacturerMeta {
