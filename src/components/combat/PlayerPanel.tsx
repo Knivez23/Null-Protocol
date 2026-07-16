@@ -42,11 +42,11 @@ export default function PlayerPanel({ characterName, stats, powerLevel, combat }
       <section className="player-header">
         <div className="portrait css-portrait"><div className="visor"></div></div>
         <div className="player-id">
-          <div className="level-badge">◈</div>
+          <div className="level-badge">◈</div><span className="loadout-pl-badge">◈ {powerLevel.toLocaleString()} <small>PL</small></span>
           <h2>{characterName.toUpperCase()}</h2>
           <p>NETRUNNER</p>
         </div>
-        <div className="rank-chevron">⌃</div>
+        <div className="rank-chevron"></div>
       </section>
 
       <section className="vitals">
