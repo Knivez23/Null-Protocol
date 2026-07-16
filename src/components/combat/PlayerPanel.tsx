@@ -34,6 +34,7 @@ export default function PlayerPanel({ characterName, stats, powerLevel, combat }
   const currentHp = combat?.currentHp ?? stats.maxHp;
   const hpPct = Math.max(0, Math.min(100, (currentHp / stats.maxHp) * 100));
   const atbPct = combat ? Math.min(1, combat.gaugeSeconds / combat.intervalSeconds) : 0;
+  const pLevel = powerLevel.toLocaleString()
 
   return (
     <aside className="panel player-panel corner-accent">
@@ -42,7 +43,7 @@ export default function PlayerPanel({ characterName, stats, powerLevel, combat }
       <section className="player-header">
         <div className="portrait css-portrait"><div className="visor"></div></div>
         <div className="player-id">
-          <div className="level-badge">◈</div><span className="loadout-pl-badge">◈ {powerLevel.toLocaleString()} <small>PL</small></span>
+          <div className="level-badge">◈</div><span className="loadout-pl-badge">◈ {pLevel} <small>PL</small></span>
           <h2>{characterName.toUpperCase()}</h2>
           <p>NETRUNNER</p>
         </div>
