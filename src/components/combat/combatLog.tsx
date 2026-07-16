@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { CombatSession, CombatEvent, CombatUnit } from '../../engine/combat';
 
 interface CombatLogProps {
@@ -8,13 +9,14 @@ interface LogLine {
   key: string;
   text: string;
   kind: 'player' | 'monster';
+  timestamp: number;
 }
 
 function formatEvent(event: CombatEvent, units: CombatUnit[], key: string): LogLine {
   if (event.type === 'regen') {
     const unit = units.find(u => u.id === event.unitId);
     const isPlayer = unit?.isPlayer ?? true;
-    return { key, kind: isPlayer ? 'player' : 'monster', text: `${isPlayer ? 'You' : unit?.name ?? 'Unknown'} regenerated ${Math.round(event.healAmount)} HP.` };
+    return { key, kind: isPlayer ? 'player' : 'monster', timestamp: event.timestamp, text: `${isPlayer ? 'You' : unit?.name ?? 'Unknown'} regenerated ${Math.round(event.healAmount)} HP.` };
   }
 
   const attacker = units.find(u => u.id === event.attackerId);
@@ -24,25 +26,35 @@ function formatEvent(event: CombatEvent, units: CombatUnit[], key: string): LogL
   const defenderLabel = defender?.isPlayer ? 'you' : defender?.name ?? 'unknown';
 
   if (!event.outcome.hit) {
-    return { key, kind: isPlayerAttacker ? 'player' : 'monster', text: `${attackerLabel} missed ${defenderLabel}.` };
+    return { key, kind: isPlayerAttacker ? 'player' : 'monster', timestamp: event.timestamp, text: `${attackerLabel} missed ${defenderLabel}.` };
   }
 
   const critSuffix = event.outcome.crit ? ' — CRITICAL HIT' : '';
-  return { key, kind: isPlayerAttacker ? 'player' : 'monster', text: `${attackerLabel} hit ${defenderLabel} for ${event.outcome.damage} damage${critSuffix}.` };
+  return { key, kind: isPlayerAttacker ? 'player' : 'monster', timestamp: event.timestamp, text: `${attackerLabel} hit ${defenderLabel} for ${event.outcome.damage} damage${critSuffix}.` };
 }
 
 export default function CombatLog({ session }: CombatLogProps) {
-  const lines = session ? session.events.map((e, i) => formatEvent(e, session.units, `${e.timestamp}-${i}`)) : [];
+  // Clear hides everything up to the moment it's clicked, without touching
+  // the real session — the actual combat event history stays intact
+  // underneath, this is purely a display filter.
+  const [clearedAt, setClearedAt] = useState(0);
+
+  const lines = session
+    ? session.events.map((e, i) => formatEvent(e, session.units, `${e.timestamp}-${i}`)).filter(l => l.timestamp >= clearedAt)
+    : [];
 
   return (
-    <div className="panel">
-      <div className="panel-head">// Combat Log</div>
-      <div className="combat-log-list">
-        {lines.length === 0 && <div className="combat-log-empty">No actions yet.</div>}
+    <section className="panel log-panel corner-accent">
+      <div className="panel-row-title">
+        <span>// COMBAT LOG</span>
+        <button onClick={() => setClearedAt(session?.elapsedTime ?? 0)}>CLEAR</button>
+      </div>
+      <div className="log-list">
+        {lines.length === 0 && <p className="log-empty">No actions yet.</p>}
         {lines.map(line => (
-          <div key={line.key} className={`combat-log-line ${line.kind}`}>{line.text}</div>
+          <p key={line.key} className={line.kind === 'player' ? 'player-log' : 'enemy-log'}>{line.text}</p>
         ))}
       </div>
-    </div>
+    </section>
   );
 }

@@ -258,9 +258,13 @@
   .enemy-stat-row .segbar{ min-width:0; width:100%;}
   .enemy-stat-row .segbar .seg{ height:6px;}
   .res-icons-row{ display:grid; grid-template-columns:repeat(3, 1fr); gap:8px 6px;}
+  .res-icons-row.single-row{ grid-template-columns:repeat(6, 1fr); gap:4px;}
   .res-icons-row div{ text-align:center; font-size:14px;}
+  .res-icons-row.single-row div{ font-size:12px;}
   .res-icons-row span{ display:block; font-size:7.5px; color:var(--text-mid); margin-top:3px; letter-spacing:0.02em;}
+  .res-icons-row.single-row span{ font-size:6.5px;}
   .res-icons-row b{ display:block; font-size:8px; color:var(--amber); letter-spacing:-0.05em; margin-top:2px;}
+  .res-icons-row.single-row b{ font-size:7px;}
 
 
 
@@ -372,11 +376,23 @@
   .encounter-result.victory{ color:var(--green);}
   .encounter-result.defeat{ color:var(--red);}
 
-  .combat-log-list{ max-height:220px; overflow-y:auto; padding:10px 14px; display:flex; flex-direction:column; gap:6px;}
-  .combat-log-empty{ font-size:11px; color:var(--text-dim); font-style:italic;}
-  .combat-log-line{ font-size:11.5px; line-height:1.4; padding-left:10px; border-left:2px solid transparent;}
-  .combat-log-line.player{ color:var(--cyan); border-left-color:rgba(63,182,232,0.5);}
-  .combat-log-line.monster{ color:var(--red); border-left-color:rgba(224,75,69,0.5);}
+  .details-panel{ padding-bottom:14px;}
+  .details-panel h3{ margin:13px 16px 2px; font-size:14px; color:var(--text-hi); letter-spacing:0.05em;}
+  .details-panel p{ margin:0 16px 12px; font-size:10px; color:var(--text-mid);}
+  .detail-grid{ display:grid; grid-template-columns:1fr 1fr; gap:4px 8px; margin:0 16px; color:var(--text-mid); font-size:9.5px; letter-spacing:0.06em;}
+  .detail-grid b{ color:var(--text-hi); font-size:15px; font-family:var(--font-display); margin-bottom:6px;}
+  .detail-grid b.green{ color:var(--green);}
+
+  .log-panel{ display:flex; flex-direction:column;}
+  .log-panel .panel-row-title{ padding-bottom:10px; border-bottom:1px solid var(--line-soft); margin:0 16px;}
+  .log-panel .panel-row-title button{ background:none; border:0; color:var(--text-mid); font:inherit; font-size:9px; cursor:pointer; letter-spacing:0.1em;}
+  .log-panel .panel-row-title button:hover{ color:var(--text-hi);}
+  .log-list{ min-height:340px; max-height:420px; overflow-y:auto; padding:8px 16px 14px;}
+  .log-empty{ font-size:11px; color:var(--text-dim); font-style:italic; margin:0;}
+  .log-list p{ margin:0; padding:5px 0; border-bottom:1px solid var(--line-soft); font-size:10.5px; letter-spacing:0.02em; line-height:1.4;}
+  .log-list p:last-child{ border-bottom:0;}
+  .player-log{ color:var(--cyan);}
+  .enemy-log{ color:var(--red);}
 
   .expedition-details-body{ padding:12px 14px;}
   .expedition-details-title{ font-family:var(--font-display); font-weight:700; font-size:13px; color:var(--text-hi); letter-spacing:0.03em;}
@@ -424,12 +440,20 @@
 
   /* RIGHT COLUMN */
   .right-col{ display:flex; flex-direction:column; gap:10px;}
-  .map-body{ padding:12px;}
-  .map-grid{ position:relative; height:150px;}
-  .node{ position:absolute; width:30px; height:30px; clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%); display:flex; align-items:center; justify-content:center; font-size:11px; border:1px solid var(--line-soft); background:rgba(255,255,255,0.03); color:var(--text-dim);}
-  .node.done{ border-color: var(--amber); color:var(--amber-bright); background:rgba(232,150,60,0.1);}
-  .node.now{ border-color: var(--amber); background:var(--amber); color:var(--bg-0); box-shadow:0 0 14px rgba(232,150,60,0.6);}
-  .node.boss{ border-color: var(--red); color:var(--red); background:rgba(224,75,69,0.12); box-shadow:0 0 12px rgba(224,75,69,0.3);}
+  .panel-row-title{ display:flex; justify-content:space-between; align-items:center; color:var(--text-mid); font-size:11px; font-weight:700; letter-spacing:0.15em; padding:14px 16px 0;}
+  .panel-row-title b{ font-size:10px; color:var(--text-mid); border:1px solid var(--line-soft); padding:3px 8px; font-weight:600;}
+  .sector-panel{ padding-bottom:12px;}
+  .sector-map{ width:100%; height:110px; margin-top:6px; display:block;}
+  .sector-map .paths path{ fill:none; stroke:rgba(139,147,163,0.28); stroke-width:2; stroke-dasharray:5 4;}
+  .sector-map .nodes text{ font-size:15px; fill:var(--text-hi); text-anchor:middle; dominant-baseline:middle;}
+  .sector-map .node{ stroke:rgba(255,255,255,0.18); stroke-width:1.4; fill:rgba(255,255,255,0.035);}
+  .sector-map .current{ stroke:var(--amber); fill:rgba(232,150,60,0.24);}
+  .sector-map .boss{ stroke:var(--red); fill:rgba(224,75,69,0.16);}
+  .sector-map .rest{ stroke:var(--cyan);}
+  .sector-map .loot{ stroke:var(--amber);}
+  .map-legend{ display:flex; gap:12px; font-size:8px; color:var(--text-mid); white-space:nowrap; overflow:hidden; padding:0 16px;}
+  .amber-dot{ display:inline-block; width:7px; height:7px; background:var(--amber); border-radius:50%; margin-right:4px;}
+  .map-legend .red{ color:var(--red);}
 
   .hostile-body{ padding:12px;}
   .hostile-top{ display:flex; gap:12px; align-items:flex-start;}

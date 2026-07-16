@@ -3,15 +3,17 @@ import { getGaugeInfo } from '../../engine/combat';
 import { statBarPct } from '../../data/statBarReference';
 import { MONSTER_ARCHETYPES, ROLE_THREAT_LABEL } from '../../data/monsters';
 import { resistanceMeta } from '../../data/resistances';
+import { computeResistancePercent } from '../../config/combatFormulas';
 import { SegmentBar } from './SegmentBar';
 
 interface HostilePanelProps {
   session: CombatSession | null;
 }
 
-const RES_DOT_COUNT = 5;
-function resDotsFilled(value: number): number {
-  return Math.min(RES_DOT_COUNT, Math.round((value / 300) * RES_DOT_COUNT));
+const RES_DOT_COUNT = 5; // each dot = 20% of the REAL effective resistance % (post-formula, capped at 75% — so the 5th dot is intentionally unreachable, an accurate reflection of the cap, not a bug)
+function resDotsFilled(rawRating: number): number {
+  const effectivePct = computeResistancePercent(rawRating); // 0-0.75
+  return Math.min(RES_DOT_COUNT, Math.round((effectivePct / 0.20)));
 }
 
 /**
@@ -66,7 +68,7 @@ export default function HostilePanel({ session }: HostilePanelProps) {
 
       <div className="section-block hostile-resistances">
         <div className="section-title">// RESISTANCES</div>
-        <div className="res-icons-row">
+        <div className="res-icons-row single-row">
           {resistanceMeta.map(r => {
             const value = stats.resistances[r.key];
             const filled = resDotsFilled(value);
