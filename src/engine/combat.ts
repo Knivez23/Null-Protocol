@@ -55,9 +55,9 @@ export function createSession(units: CombatUnit[]): CombatSession {
   return { units, elapsedTime: 0, events: [], isOver: false, winnerIsPlayer: null, regenTimer: 0 };
 }
 
-function pickTarget(units: CombatUnit[], attacker: CombatUnit): CombatUnit | null {
-  const aliveOpponents = units.filter(u => u.isPlayer !== attacker.isPlayer && u.currentHp > 0);
-  return aliveOpponents[0] ?? null; // simple "first alive opponent" — no multi-target/targeting logic yet
+/** Elapsed-seconds-toward-next-action and the full interval, for a UI gauge bar. Shared here (not combatFormulas.ts) to avoid a circular import, since CombatUnit is defined in this file. */
+export function getGaugeInfo(unit: CombatUnit): { elapsed: number; interval: number } {
+  return { elapsed: unit.gaugeProgress, interval: computeAttackInterval(unit.stats.speed) };
 }
 
 function checkVictory(units: CombatUnit[]): boolean | null {

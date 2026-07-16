@@ -1,4 +1,4 @@
-import type { GearSlotType } from '../types';
+import type { GearSlotType, RarityId } from '../types';
 
 export interface GearTypeMeta {
   id: string;
@@ -58,3 +58,14 @@ export const GEAR_TYPE_IDS = Object.keys(GEAR_TYPES);
 
 /** The 10 gear types that count toward Character Power Level — everything except CyberDeck (utility slot, excluded per project decision). */
 export const PL_CONTRIBUTING_TYPE_IDS = GEAR_TYPE_IDS.filter(id => GEAR_TYPES[id].category !== 'cyberdeck');
+
+/**
+ * CyberDeck ROM slot count by rarity — Combat and Systems Design v2.0's
+ * Rarity Range table ("Cyberdeck ROMs: 3,4,5,6,7,8"). This was authored in
+ * the design doc but never actually wired into any code until now — the
+ * Loadout Panel was still showing a hardcoded "2 ROM slots" constant left
+ * over from before CyberDecks were real craftable items.
+ */
+export const ROM_SLOT_COUNT_BY_RARITY: Record<RarityId, number> = {
+  common: 3, uncommon: 4, rare: 5, epic: 6, legendary: 7, mythic: 8,
+};

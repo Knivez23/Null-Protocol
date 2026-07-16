@@ -1,10 +1,6 @@
-import { useState } from 'react';
-import type { Loadout, EquipSlotId, RomMeta, GearItem, GearSlotType } from '../../types';
-import { roms } from '../../data/roms';
-import { RARITY_COLORS, UTILITY_SLOT_ICONS, assetIcon } from '../../data/equipmentVisuals';
-import { equipRom, unequipRom, equipItem, isValidDropSlot, computePowerLevel } from '../../engine/equipment';
-import { CYBERDECK_PLACEHOLDER } from '../../config/gameConfig';
-import RomPickerModal from './RomPickerModal';
+import type { Loadout, EquipSlotId, GearItem, GearSlotType } from '../../types';
+import { RARITY_COLORS, assetIcon } from '../../data/equipmentVisuals';
+import { equipItem, isValidDropSlot, computePowerLevel } from '../../engine/equipment';
 import GearIcon from './GearIcon';
 
 interface LoadoutPanelProps {
@@ -17,12 +13,17 @@ interface LoadoutPanelProps {
   onSelect: (itemId: string) => void;
 }
 
+// CyberDeck joins the left column (beneath Boots) purely for 6+6 visual
+// symmetry with the right column now that Consumable sits beneath Amulet —
+// it's still its own independent equip slot, not actually grouped with
+// armor mechanically.
 const LEFT_SLOTS: { id: EquipSlotId; label: string; category: GearSlotType }[] = [
   { id: 'head', label: 'Helmet', category: 'head' },
   { id: 'chest', label: 'Chest', category: 'chest' },
   { id: 'legs', label: 'Legs', category: 'legs' },
   { id: 'hands', label: 'Gloves', category: 'hands' },
   { id: 'feet', label: 'Boots', category: 'feet' },
+  { id: 'cyberdeck', label: 'Cyberdeck', category: 'cyberdeck' },
 ];
 const RIGHT_SLOTS: { id: EquipSlotId; label: string; category: GearSlotType }[] = [
   { id: 'weapon', label: 'Primary', category: 'weapon' },
@@ -103,19 +104,9 @@ function SlotBox({ id, label, loadout, draggedItem, setDraggedItem, setDraggedFr
 }
 
 export default function LoadoutPanel({ loadout, onChange, draggedItem, setDraggedItem, setDraggedFromSlot, selectedItemId, onSelect }: LoadoutPanelProps) {
-  const [pickerSlotIndex, setPickerSlotIndex] = useState<number | null>(null);
   const powerLevel = computePowerLevel(loadout);
 
   const handleDropEquip = (item: GearItem, slotId: EquipSlotId) => onChange(equipItem(loadout, item, slotId));
-
-  const handleSelectRom = (rom: RomMeta) => {
-    onChange(equipRom(loadout, rom.id));
-    setPickerSlotIndex(null);
-  };
-
-  const handleUnequipRom = (romId: string) => onChange(unequipRom(loadout, romId));
-
-  const romSlots = Array.from({ length: CYBERDECK_PLACEHOLDER.ENCOUNTER_ROM_SLOTS });
 
   return (
     <div className="panel">
@@ -137,52 +128,12 @@ export default function LoadoutPanel({ loadout, onChange, draggedItem, setDragge
             {RIGHT_SLOTS.map(s => (
               <SlotBox key={s.id} {...s} loadout={loadout} draggedItem={draggedItem} setDraggedItem={setDraggedItem} setDraggedFromSlot={setDraggedFromSlot} selectedItemId={selectedItemId} onSelect={onSelect} onDropEquip={handleDropEquip} />
             ))}
-          </div>
-        </div>
-
-        <div className="equip-slot-row" style={{ marginTop: '12px' }}>
-          <div className="equip-slot-v2 utility filled" title="Fixed starter Cyberdeck — not yet upgradeable">
-            <div className="equip-slot-icon"><GearIcon icon={UTILITY_SLOT_ICONS.cyberdeck} size={39} /></div>
-            <div className="equip-slot-v2-label">Cyberdeck</div>
-            <div className="equip-slot-sub">{CYBERDECK_PLACEHOLDER.ENCOUNTER_ROM_SLOTS} ROM / {CYBERDECK_PLACEHOLDER.PROTOCOL_SLOTS} Protocol</div>
-          </div>
-          <div className="equip-slot-v2 utility" title="Consumable — not yet implemented">
-            <div className="equip-slot-icon"><GearIcon icon={UTILITY_SLOT_ICONS.consumable} size={39} /></div>
-            <div className="equip-slot-v2-label">Consumable</div>
-            <div className="equip-slot-sub">Empty</div>
+            <div className="equip-slot-v2" title="Consumable — not yet implemented">
+              <div className="equip-slot-v2-label">Consumable</div>
+            </div>
           </div>
         </div>
       </div>
-
-      <div className="panel-head">// Equipped ROMs</div>
-      <div className="panel-body">
-        <div className="rom-slot-row">
-          {romSlots.map((_, i) => {
-            const romId = loadout.equippedRomIds[i];
-            const rom = romId ? roms.find(r => r.id === romId) : undefined;
-            return (
-              <div
-                key={i}
-                className={`rom-slot ${rom ? 'filled' : ''}`}
-                onClick={() => (rom ? handleUnequipRom(rom.id) : setPickerSlotIndex(i))}
-                title={rom ? `${rom.name} — click to unequip` : 'Empty ROM slot — click to equip'}
-              >
-                <div className="rom-slot-icon">{rom ? rom.icon : '+'}</div>
-                <div className="rom-slot-name">{rom ? rom.name : 'Empty'}</div>
-                {rom && <div className="rom-slot-rank">RANK 5/5</div>}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {pickerSlotIndex !== null && (
-        <RomPickerModal
-          equippedRomIds={loadout.equippedRomIds}
-          onSelect={handleSelectRom}
-          onClose={() => setPickerSlotIndex(null)}
-        />
-      )}
     </div>
   );
 }

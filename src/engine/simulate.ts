@@ -5,14 +5,16 @@
  *
  * Runs batches of headless ATB encounters and prints aggregate results.
  *
- * IMPORTANT: stat numbers below are NOT balanced values — item generation
- * (Phase 3) and monster content (Phase 4) haven't been rebuilt for this
- * revision yet. These are round, easy-to-reason-about placeholders purely
- * to exercise the engine mechanics end-to-end — not a balance pass.
+ * IMPORTANT: player stats below are hand-picked, not from real crafted
+ * gear — see engine/combatant.ts for the real Loadout-to-CombatantStats
+ * path. Monster content is real (data/monsters.ts) but its non-HP stat
+ * scaling is explicitly flagged there as placeholder, not a locked
+ * formula — this exercises the engine mechanics, it is not a balance pass.
  */
 import type { CombatantStats } from '../types';
 import { createUnit, runToCompletion } from './combat';
-import { computePlayerMaxHp, computeMonsterMaxHp, type MonsterRole } from '../config/combatFormulas';
+import { computePlayerMaxHp } from '../config/combatFormulas';
+import { createMonsterStats, MONSTER_ARCHETYPES } from '../data/monsters';
 
 function freshPlayer(characterPL: number): CombatantStats {
   return {
@@ -23,28 +25,15 @@ function freshPlayer(characterPL: number): CombatantStats {
   };
 }
 
-// PLACEHOLDER scaling — real monster content isn't built yet (Phase 4).
-// This exists purely to exercise the engine across a range of difficulty.
-function freshMonster(mapPL: number, role: MonsterRole): CombatantStats {
-  const scale = mapPL / 500; // rough difficulty knob so higher mapPL produces tougher monsters
-  return {
-    maxHp: computeMonsterMaxHp(mapPL, role),
-    attackPower: Math.round(150 * scale), meleeAccuracy: Math.round(200 * scale), rangedAccuracy: 0,
-    defensePower: Math.round(80 * scale), armorRating: Math.round(60 * scale), critChance: 10, critDamage: 150,
-    dodgeRating: Math.round(50 * scale), evasionRating: 0, speed: Math.round(80 * scale), regenRating: 0,
-    armorPierce: 0, resistancePierce: 0, statusPower: 0, statusChance: 0,
-    resistances: { heat: 30, cold: 30, shock: 30, poison: 30, bleed: 30, rot: 30 },
-  };
-}
-
-function runBatch(n: number, mapPL: number, role: MonsterRole) {
+function runBatch(n: number, mapPL: number, archetypeId: string) {
+  const archetype = MONSTER_ARCHETYPES[archetypeId];
   let playerWins = 0, monsterWins = 0, timeouts = 0;
   let totalDuration = 0, totalPlayerHpOnWin = 0, totalActions = 0, totalRegenTicks = 0;
 
   for (let i = 0; i < n; i++) {
     const units = [
       createUnit('player', 'Voidstrider', true, freshPlayer(mapPL), 'ranged'),
-      createUnit('monster', `${role} monster`, false, freshMonster(mapPL, role), 'melee'),
+      createUnit('monster', archetype.name, false, createMonsterStats(archetypeId, mapPL), archetype.attackType, archetype.element),
     ];
     const session = runToCompletion(units);
     totalDuration += session.elapsedTime;
@@ -62,7 +51,7 @@ function runBatch(n: number, mapPL: number, role: MonsterRole) {
   }
 
   const playerMaxHp = computePlayerMaxHp(mapPL, 0);
-  console.log(`\n--- Map PL ${mapPL} [${role}] — ${n} encounters ---`);
+  console.log(`\n--- Map PL ${mapPL} [${archetype.name}, ${archetype.role}] — ${n} encounters ---`);
   console.log(`Player win rate:  ${((playerWins / n) * 100).toFixed(1)}%`);
   console.log(`Monster win rate: ${((monsterWins / n) * 100).toFixed(1)}%`);
   console.log(`Timeouts (300s safety cap): ${timeouts}`);
@@ -78,10 +67,10 @@ const BATCH_SIZE = 1000;
 console.log(`Simulating ${BATCH_SIZE} encounters per Map PL using the ATB engine (Combat and Systems Design v2.0).`);
 
 for (const mapPL of [500, 2000, 6000]) {
-  runBatch(BATCH_SIZE, mapPL, 'standard');
+  runBatch(BATCH_SIZE, mapPL, 'corruptedSentinel');
 }
 
-console.log('\n\n========== BOSS VARIANT (10x role multiplier) ==========');
+console.log('\n\n========== ELITE VARIANT ==========');
 for (const mapPL of [500, 2000, 6000]) {
-  runBatch(BATCH_SIZE, mapPL, 'boss');
+  runBatch(BATCH_SIZE, mapPL, 'corruptedEnforcer');
 }

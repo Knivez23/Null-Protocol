@@ -1,23 +1,25 @@
 import { useState, useEffect } from 'react';
 import Topbar from './components/layout/Topbar';
-import SideNav from './components/layout/SideNav';
 import BackgroundLayer from './components/layout/BackgroundLayer';
 import SectionPlaceholder from './components/layout/SectionPlaceholder';
 import PlayerPanel from './components/combat/PlayerPanel';
 import EncounterStage from './components/combat/EncounterStage';
-import AbilityBar from './components/combat/AbilityBar';
 import HostilePanel from './components/combat/HostilePanel';
+import ExpeditionDetails from './components/combat/ExpeditionDetails';
+import CombatLog from './components/combat/CombatLog';
 import SectorMap from './components/map/SectorMap';
 import MapsScreen from './components/map/MapsScreen';
 import IdleScreen from './components/idle/IdleScreen';
 import EquipmentScreen from './components/equipment/EquipmentScreen';
 import LandingScreen from './components/landing/LandingScreen';
 import { useCombatState } from './hooks/useCombatState';
+import { getGaugeInfo } from './engine/combat';
 import { sections } from './data/sections';
 import { nodes } from './data/nodes';
 import { components } from './data/components';
 import { saveStorage } from './engine/saveStorage';
 import { computePowerLevel } from './engine/equipment';
+import { computeCombatantStatsFromLoadout } from './engine/combatant';
 import { processTick } from './engine/nullScavenger';
 import { getEffectiveTickInterval } from './config/gameConfig';
 import { emptyLoadout } from './types';
@@ -41,9 +43,8 @@ export default function App() {
   const [nodesUnlocked, setNodesUnlocked] = useState<string[]>([]);
   const [schematicsUnlocked, setSchematicsUnlocked] = useState<string[]>([]);
 
-  const [navOpen, setNavOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<SectionId>('armory');
-  const combat = useCombatState();
+  const combat = useCombatState(loadout);
 
   // Null's tick loop lives HERE, not inside IdleScreen — App.tsx never
   // unmounts while the player is in the 'game' screen, so this keeps running
@@ -102,7 +103,6 @@ export default function App() {
 
   const handleSelectSection = (section: SectionId) => {
     setActiveSection(section);
-    setNavOpen(false);
   };
 
   if (screen === 'landing' || !meta || !playerStats || !nullState) {
@@ -120,43 +120,42 @@ export default function App() {
   };
 
   const powerLevel = computePowerLevel(loadout);
+  const liveStats = computeCombatantStatsFromLoadout(loadout);
 
   return (
     <div className="app">
       <BackgroundLayer image={sections[activeSection].background} />
 
-      <Topbar />
+      <Topbar activeSection={activeSection} onSelectSection={handleSelectSection} />
 
       <div className="main">
-        <SideNav
-          open={navOpen}
-          activeSection={activeSection}
-          onOpen={() => setNavOpen(true)}
-          onClose={() => setNavOpen(false)}
-          onSelectSection={handleSelectSection}
-        />
-
         <div className="content">
           {activeSection === 'expedition' && (
             <>
-              <PlayerPanel characterName={meta.characterName} stats={playerStats} powerLevel={powerLevel} />
+              <PlayerPanel
+                characterName={meta.characterName}
+                stats={liveStats}
+                powerLevel={powerLevel}
+                combat={(() => {
+                  const playerUnit = combat.session?.units.find(u => u.isPlayer);
+                  if (!combat.hasEngaged || !playerUnit) return undefined;
+                  const gauge = getGaugeInfo(playerUnit);
+                  return { currentHp: playerUnit.currentHp, gaugeSeconds: gauge.elapsed, intervalSeconds: gauge.interval };
+                })()}
+              />
               <div className="panel-stack">
-                <EncounterStage round={combat.round} />
-                <AbilityBar
-                  energy={combat.energy}
-                  maxEnergy={combat.maxEnergy}
-                  cooldowns={combat.cooldowns}
-                  onUseAbility={combat.useAbility}
-                  onEndTurn={combat.endTurn}
+                <EncounterStage
+                  session={combat.session}
+                  hasEngaged={combat.hasEngaged}
+                  onStartCombat={combat.startCombat}
+                  onResetEncounter={combat.resetEncounter}
                 />
               </div>
               <div className="right-col">
-                <HostilePanel
-                  bossHpPct={combat.bossHpPct}
-                  bossHpCurrent={combat.bossHpCurrent}
-                  maxBossHp={combat.maxBossHp}
-                />
+                <HostilePanel session={combat.session} />
                 <SectorMap />
+                <ExpeditionDetails session={combat.session} characterPL={powerLevel} />
+                <CombatLog session={combat.session} />
               </div>
             </>
           )}
