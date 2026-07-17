@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import type { CombatSession, CombatEvent, CombatUnit } from '../../engine/combat';
 
 interface CombatLogProps {
@@ -38,10 +38,18 @@ export default function CombatLog({ session }: CombatLogProps) {
   // the real session — the actual combat event history stays intact
   // underneath, this is purely a display filter.
   const [clearedAt, setClearedAt] = useState(0);
+  const listRef = useRef<HTMLDivElement>(null);
 
   const lines = session
     ? session.events.map((e, i) => formatEvent(e, session.units, `${e.timestamp}-${i}`)).filter(l => l.timestamp >= clearedAt)
     : [];
+
+  // Keep the log pinned to the newest message — fires whenever the visible
+  // line count changes, whether from a new combat event or a Clear.
+  useEffect(() => {
+    const el = listRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [lines.length]);
 
   return (
     <section className="panel log-panel corner-accent">
@@ -49,7 +57,7 @@ export default function CombatLog({ session }: CombatLogProps) {
         <span>// COMBAT LOG</span>
         <button onClick={() => setClearedAt(session?.elapsedTime ?? 0)}>CLEAR</button>
       </div>
-      <div className="log-list">
+      <div className="log-list" ref={listRef}>
         {lines.length === 0 && <p className="log-empty">No actions yet.</p>}
         {lines.map(line => (
           <p key={line.key} className={line.kind === 'player' ? 'player-log' : 'enemy-log'}>{line.text}</p>

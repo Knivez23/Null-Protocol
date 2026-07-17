@@ -1,8 +1,8 @@
 import type { CombatantStats, ResistanceType } from '../../types';
 import { resistanceMeta } from '../../data/resistances';
 import { statBarPct } from '../../data/statBarReference';
-import { computeResistancePercent } from '../../config/combatFormulas';
-import { SegmentBar, DiamondBar } from './SegmentBar';
+import { computeResistancePercent, computeAttackInterval } from '../../config/combatFormulas';
+import { SegmentBar } from './SegmentBar';
 
 interface PlayerPanelProps {
   characterName: string;
@@ -33,8 +33,9 @@ function resDotsFilled(rawRating: number): number {
 export default function PlayerPanel({ characterName, stats, powerLevel, combat }: PlayerPanelProps) {
   const currentHp = combat?.currentHp ?? stats.maxHp;
   const hpPct = Math.max(0, Math.min(100, (currentHp / stats.maxHp) * 100));
-  const atbPct = combat ? Math.min(1, combat.gaugeSeconds / combat.intervalSeconds) : 0;
-  const pLevel = powerLevel.toLocaleString()
+  const gaugeSeconds = combat?.gaugeSeconds ?? 0;
+  const intervalSeconds = combat?.intervalSeconds ?? computeAttackInterval(stats.speed);
+  const atbPct = Math.min(1, gaugeSeconds / intervalSeconds);
 
   return (
     <aside className="panel player-panel corner-accent">
@@ -42,12 +43,11 @@ export default function PlayerPanel({ characterName, stats, powerLevel, combat }
 
       <section className="player-header">
         <div className="portrait css-portrait"><div className="visor"></div></div>
-        <div className="player-id">
-          <div className="level-badge">◈</div><span className="loadout-pl-badge">◈ {pLevel} <small>PL</small></span>
+        <div className="combat-player-id">
           <h2>{characterName.toUpperCase()}</h2>
           <p>NETRUNNER</p>
         </div>
-        <div className="rank-chevron"></div>
+        <div className="player-pl">◈ {powerLevel.toLocaleString()}</div>
       </section>
 
       <section className="vitals">
@@ -55,12 +55,10 @@ export default function PlayerPanel({ characterName, stats, powerLevel, combat }
           <div className="meter-label"><span>HP</span><span>{Math.round(currentHp).toLocaleString()} / {Math.round(stats.maxHp).toLocaleString()}</span></div>
           <div className="meter hp"><span style={{ width: `${hpPct}%` }} /></div>
         </div>
-        {combat && (
-          <div className="meter-row">
-            <div className="meter-label"><span>ATB</span><span>{combat.gaugeSeconds.toFixed(1)}s / {combat.intervalSeconds.toFixed(1)}s</span></div>
-            <SegmentBar pct={atbPct} />
-          </div>
-        )}
+        <div className="meter-row">
+          <div className="meter-label"><span>ATB</span><span>{gaugeSeconds.toFixed(1)}s / {intervalSeconds.toFixed(1)}s</span></div>
+          <SegmentBar pct={atbPct} />
+        </div>
       </section>
 
       <section className="section-block">
@@ -75,12 +73,12 @@ export default function PlayerPanel({ characterName, stats, powerLevel, combat }
           <div className="stat-line"><span>EVASION RATING</span><SegmentBar pct={statBarPct('evasionRating', stats.evasionRating)} /><b>{formatRating(stats.evasionRating)}</b></div>
           <div className="stat-line"><span>SPEED</span><SegmentBar pct={statBarPct('speed', stats.speed)} /><b>{formatRating(stats.speed)}</b></div>
           <div className="stat-line"><span>REGEN RATING</span><SegmentBar pct={statBarPct('regenRating', stats.regenRating)} /><b>{formatRating(stats.regenRating)}</b></div>
-          <div className="stat-line"><span>CRIT CHANCE</span><DiamondBar pct={statBarPct('critChance', stats.critChance)} /><b>{formatPercent(stats.critChance)}</b></div>
-          <div className="stat-line"><span>CRIT DAMAGE</span><DiamondBar pct={statBarPct('critDamage', stats.critDamage)} /><b>{formatPercent(stats.critDamage)}</b></div>
+          <div className="stat-line"><span>CRIT CHANCE</span><SegmentBar pct={statBarPct('critChance', stats.critChance)} /><b>{formatPercent(stats.critChance)}</b></div>
+          <div className="stat-line"><span>CRIT DAMAGE</span><SegmentBar pct={statBarPct('critDamage', stats.critDamage)} /><b>{formatPercent(stats.critDamage)}</b></div>
           {stats.armorPierce > 0 && <div className="stat-line"><span>ARMOR PIERCE</span><SegmentBar pct={statBarPct('armorPierce', stats.armorPierce)} /><b>{formatRating(stats.armorPierce)}</b></div>}
           {stats.resistancePierce > 0 && <div className="stat-line"><span>RESISTANCE PIERCE</span><SegmentBar pct={statBarPct('resistancePierce', stats.resistancePierce)} /><b>{formatRating(stats.resistancePierce)}</b></div>}
           {stats.statusPower > 0 && <div className="stat-line"><span>STATUS POWER</span><SegmentBar pct={statBarPct('statusPower', stats.statusPower)} /><b>{formatRating(stats.statusPower)}</b></div>}
-          {stats.statusChance > 0 && <div className="stat-line"><span>STATUS CHANCE</span><DiamondBar pct={statBarPct('statusChance', stats.statusChance)} /><b>{formatPercent(stats.statusChance)}</b></div>}
+          {stats.statusChance > 0 && <div className="stat-line"><span>STATUS CHANCE</span><SegmentBar pct={statBarPct('statusChance', stats.statusChance)} /><b>{formatPercent(stats.statusChance)}</b></div>}
         </div>
       </section>
 

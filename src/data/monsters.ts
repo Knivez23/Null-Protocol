@@ -24,6 +24,8 @@ export interface MonsterArchetype {
   description: string;
   attackType: 'melee' | 'ranged';
   element?: ResistanceType;
+  /** Real art, when it exists — undefined falls back to the generic placeholder shape in EncounterStage. Only Standard and Elite have real art so far. */
+  artAsset?: string;
 }
 
 export const MONSTER_ARCHETYPES: Record<string, MonsterArchetype> = {
@@ -36,12 +38,14 @@ export const MONSTER_ARCHETYPES: Record<string, MonsterArchetype> = {
     id: 'corruptedSentinel', name: 'Corrupted Sentinel', role: 'standard',
     description: 'Balanced baseline enemy — no strong skew in any direction.',
     attackType: 'melee',
+    artAsset: '/monsters/sentinel-standard.webp',
   },
   corruptedEnforcer: {
     id: 'corruptedEnforcer', name: 'Corrupted Enforcer', role: 'elite',
     description: 'Tanky, hard-hitting single-target fight — slower, meant to be fought carefully.',
     attackType: 'melee',
     element: 'shock',
+    artAsset: '/monsters/sentinel-elite.webp',
   },
 };
 

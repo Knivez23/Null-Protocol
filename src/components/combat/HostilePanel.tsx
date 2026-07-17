@@ -1,7 +1,7 @@
 import type { CombatSession } from '../../engine/combat';
 import { getGaugeInfo } from '../../engine/combat';
 import { statBarPct } from '../../data/statBarReference';
-import { MONSTER_ARCHETYPES, ROLE_THREAT_LABEL } from '../../data/monsters';
+import { MONSTER_ARCHETYPES } from '../../data/monsters';
 import { resistanceMeta } from '../../data/resistances';
 import { computeResistancePercent } from '../../config/combatFormulas';
 import { SegmentBar } from './SegmentBar';
@@ -31,7 +31,6 @@ export default function HostilePanel({ session }: HostilePanelProps) {
   if (!monster) return null;
 
   const archetype = MONSTER_ARCHETYPES[monster.id];
-  const threatLabel = archetype ? ROLE_THREAT_LABEL[archetype.role] : '—';
   const hpPct = Math.max(0, Math.min(1, monster.currentHp / monster.stats.maxHp));
   const gauge = getGaugeInfo(monster);
   const atbPct = Math.min(1, gauge.elapsed / gauge.interval);
@@ -44,11 +43,10 @@ export default function HostilePanel({ session }: HostilePanelProps) {
       <div className="hostile-head">
         <div className="enemy-emblem">☣</div>
         <div><h3>{monster.name.toUpperCase()}</h3><p>{archetype?.role.toUpperCase() ?? 'UNKNOWN'}</p></div>
-        <div className="threat compact">THREAT <b>▲ {threatLabel.toUpperCase()}</b></div>
       </div>
 
       <div className="meter-row"><div className="meter-label"><span>HP</span></div><div className="meter hp"><span style={{ width: `${hpPct * 100}%` }} /></div></div>
-      <div className="meter-row"><div className="meter-label"><span>ATB</span></div><SegmentBar pct={atbPct} color="red" /></div>
+      <div className="meter-row"><div className="meter-label"><span>ATB</span><span>{gauge.elapsed.toFixed(1)}s / {gauge.interval.toFixed(1)}s</span></div><SegmentBar pct={atbPct} color="red" /></div>
 
       <div className="section-block enemy-stat-block">
         <div className="section-title">// STATS</div>

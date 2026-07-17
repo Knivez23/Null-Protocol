@@ -4,6 +4,7 @@ import BackgroundLayer from './components/layout/BackgroundLayer';
 import SectionPlaceholder from './components/layout/SectionPlaceholder';
 import PlayerPanel from './components/combat/PlayerPanel';
 import EncounterStage from './components/combat/EncounterStage';
+import ActiveEffectsBanner from './components/combat/ActiveEffectsBanner';
 import HostilePanel from './components/combat/HostilePanel';
 import ExpeditionDetails from './components/combat/ExpeditionDetails';
 import CombatLog from './components/combat/CombatLog';
@@ -150,6 +151,7 @@ export default function App() {
                   onStartCombat={combat.startCombat}
                   onResetEncounter={combat.resetEncounter}
                 />
+                <ActiveEffectsBanner />
               </div>
               <div className="right-col">
                 <HostilePanel session={combat.session} />
